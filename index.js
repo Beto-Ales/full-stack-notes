@@ -5,6 +5,8 @@ const app = express()
 
 app.use(cors())
 
+app.use(express.static('build'))
+
 app.use(express.json())     // json-parser
 
 let notes = [
@@ -87,3 +89,7 @@ const PORT = process.env.PORT || 3002
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
+
+
+// heroku
+// https://young-depths-75578.herokuapp.com/api/notes
