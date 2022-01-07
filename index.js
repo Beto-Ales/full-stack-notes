@@ -1,13 +1,54 @@
 const express = require('express')
 const cors = require('cors')
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config()
+}
+
+const Note = require('./models/note')
 
 const app = express()
 
 app.use(cors())
-
 app.use(express.static('build'))
-
 app.use(express.json())     // json-parser
+
+
+
+// Express error handlers are middleware that are defined with a function that accepts four parameters. Our error handler looks like this:
+
+const errorHandler = (error, request, response, nect) => {
+    
+    console.error(error.message)
+
+    if (error.name === 'CastError') {
+        return response.status(400).send({error: 'malformatted id'})
+    } else if(error.name === 'ValidationError'){
+        return response.status(400).json({error: error.message})
+    }
+
+    next(error)
+}
+
+// The error handler checks if the error is a CastError exception, in which case we know that the error was caused by an invalid object id for Mongo. 
+// In this situation the error handler will send a response to the browser with the response object passed as a parameter. 
+// In all other error situations, the middleware passes the error forward to the default Express error handler
+
+// Note that the error handling middleware has to be the last loaded middleware!
+
+
+
+
+const requestLogger = (request, response, next) => {
+    console.log('Method', request.method)
+    console.log('Path', request.path)
+    console.log('Body', request.body)
+    console.log('---')
+    next()
+}
+
+app.use(requestLogger)
+
+
 
 let notes = [
     {    
@@ -35,56 +76,85 @@ app.get('/', (request, response) => {
 })                                          // to be text/html. The status code of the response defaults to 200.
 
 app.get('/api/notes', (request, response) => {
-    response.json(notes)                        // Express automatically sets the Content-Type header with the appropriate value of application/json
+    Note.find({}).then(notes => {
+        response.json(notes)
+    })
 })
 
-app.get('/api/notes/:id', (request, response) => {
+app.get('/api/notes/:id', (request, response, next) => {
     const id = request.params.id
-    const note = notes.find(note => note.id == id)      // notice the == and not === becouse request.params.id is string, and not an integer
-    if (note) {
-        response.json(note)   
-    } else {
-        response.status(404).end()
-    }    
+    Note.findById(id).then(note => {
+        if (note) {
+            response.json(note)    
+        } else {
+            response.status(404).end()
+        }        
+    })
+    .catch(error => next(error))            // The error that is passed forwards is given to the next function as a parameter
+        
+        
+        // console.log(error)                                           move this to the middleware
+        // response.status(400).send({error: 'malformatted id'})
+    
 })
 
-app.delete('/api/notes/:id', (request, response) => {
-    const id = Number(request.params.id)
-    notes = notes.filter(note => note.id !== id)
-    response.status(204).end()
+app.delete('/api/notes/:id', (request, response, next) => {    
+    Note.findByIdAndDelete(request.params.id)
+        .then(result => {
+            response.status(204).end()
+        })
+        .catch(error => next(error))    
 })
 
-const generateId = () => {
-    const maxId = notes.length > 0
-    ? Math.max(...notes.map(note => note.id))
-    : 0
-    return maxId + 1
-}
-
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', (request, response, next) => {
 
     const body = request.body
 
-    if (!body.content) {
+    if (body.content === undefined) {
         return response.status(400).json({
             error: 'Content missing'
         })
     }
     
-    const note = {
+    const note = new Note({
         content: body.content,
         important: body.important || false,
         date: new Date(),
-        id: generateId()
-    } 
+    })
     
-    notes = notes.concat(note)    
-    response.json(note)
+    note.save().then(savedNote => {
+        response.json(savedNote)
+    })
+    .catch(error => next(error))
+    
 })
 
+app.put('/api/notes/:id', (request, response, next) => {
+    const body = request.body
+
+    const note = {
+        content: body.content,
+        important: body.important,
+    }
+
+    Note.findByIdAndUpdate(request.params.id, note, {new: true})
+        .then(updatedNote => {
+            response.json(updatedNote)
+        })
+        .catch(error => next(error))
+})
+
+const unknownEndpoint = (request, response) => {
+    response.status(404).send({error: 'unknown endpoint'})
+}
+
+app.use(unknownEndpoint)
+
+app.use(errorHandler)
 
 
-const PORT = process.env.PORT || 3002
+
+const PORT = process.env.PORT
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
