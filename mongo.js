@@ -9,7 +9,7 @@ const password = process.argv[2]
 
 const url =`mongodb+srv://beto:${password}@cluster0.otp1c.mongodb.net/Note-app?retryWrites=true&w=majority`
 
-// password: RtBqdLV1TuK7OSJc
+
 
 mongoose.connect(url)
 
